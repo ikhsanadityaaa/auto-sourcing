@@ -26,7 +26,7 @@ from verify_agent import verify_candidates
 
 MAX_RETRY = 3           # batas maksimal Agent1<->Agent2 loop per item, biar tidak muter tanpa henti
 SLEEP_BETWEEN_ITEMS = 2  # jeda antar item (detik) - jaga-jaga rate limit free tier
-SLEEP_AFTER_GEMINI_CALL = 13  # detik - Gemini free tier gemini-2.5-flash dibatasi 5 request/menit,
+SLEEP_AFTER_GEMINI_CALL = 5  # detik - Gemini free tier gemini-2.5-flash dibatasi 5 request/menit,
                                # jadi jeda min. 12s antar call; 13s buat margin aman
 
 
