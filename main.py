@@ -26,6 +26,8 @@ from verify_agent import verify_candidates
 
 MAX_RETRY = 3           # batas maksimal Agent1<->Agent2 loop per item, biar tidak muter tanpa henti
 SLEEP_BETWEEN_ITEMS = 2  # jeda antar item (detik) - jaga-jaga rate limit free tier
+SLEEP_AFTER_GEMINI_CALL = 13  # detik - Gemini free tier gemini-2.5-flash dibatasi 5 request/menit,
+                               # jadi jeda min. 12s antar call; 13s buat margin aman
 
 
 def process_one_item(gemini_client, groq_client, item: dict) -> list:
@@ -44,6 +46,7 @@ def process_one_item(gemini_client, groq_client, item: dict) -> list:
         print(f"  [{code}] percobaan {attempt}/{MAX_RETRY} ...")
 
         candidates = search_part(gemini_client, code, product, spec, maker, retry_feedback=feedback)
+        time.sleep(SLEEP_AFTER_GEMINI_CALL)  # jaga rate limit Gemini free tier (5 request/menit)
         result = verify_candidates(groq_client, code, product, spec, maker, candidates)
         verified = result.get("verified", [])
         feedback = result.get("rejected_feedback", "")
