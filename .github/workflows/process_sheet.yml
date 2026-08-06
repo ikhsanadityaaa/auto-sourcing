@@ -1,0 +1,38 @@
+name: Process PO Spec Sheet
+
+on:
+  workflow_dispatch: {}   # klik tombol "Run workflow" manual di tab Actions
+  schedule:
+    - cron: "0 2 * * *"   # tiap hari jam 09:00 WIB (02:00 UTC) - ubah/hapus sesuai kebutuhan
+
+jobs:
+  process:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350   # jauh di atas limit Apps Script; sesuaikan kalau perlu lebih lama
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Write service account key to file
+        run: echo "${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON_B64 }}" | base64 -d > service_account.json
+
+      - name: Run agent pipeline
+        env:
+          GOOGLE_SERVICE_ACCOUNT_JSON: service_account.json
+          SPREADSHEET_ID: ${{ secrets.SPREADSHEET_ID }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+        run: python main.py
+
+      - name: Cleanup credentials file
+        if: always()
+        run: rm -f service_account.json
