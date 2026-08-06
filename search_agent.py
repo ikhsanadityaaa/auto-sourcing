@@ -1,21 +1,19 @@
 """
-Agent 2 (Searcher) - Gemini Flash + Google Search grounding.
+Agent 2 (Searcher) - Groq groq/compound (Llama/GPT-OSS + web search bawaan).
 Tugas: cari spec lengkap + SEMUA varian model number (beda suffix/prefix)
 di internet, bukan dari website resmi maker / katalog resmi.
 """
 
 import json
 import re
-from google import genai
-from google.genai import types
+from groq import Groq
 
-MODEL = "gemini-3.1-flash-lite"  # model tetap, hindari alias "latest" biar nggak boros 2x call/item
-                                  # kalau ini pun error 404 di kemudian hari, cek model terbaru di:
-                                  # https://ai.google.dev/gemini-api/docs/models
+MODEL = "groq/compound"  # system Groq dgn web search bawaan. Cek console.groq.com/docs/compound
+                          # kalau ini error/deprecated di kemudian hari.
 
-SYSTEM_PROMPT = """Kamu adalah asisten riset spare part industri.
+SYSTEM_PROMPT = """Kamu adalah asisten riset spare part industri dengan akses web search.
 Tugasmu: diberikan kode internal, nama produk, spec awal (sering tidak lengkap),
-dan nama maker/brand, kamu HARUS mencari via internet:
+dan nama maker/brand, kamu HARUS cari via web search:
 
 1. Spec teknis LENGKAP dari part ini (dimensi, rating, material, dll - apapun yang relevan).
 2. SEMUA varian model number yang mirip dengan prefix/base code yang sama tapi
@@ -30,7 +28,8 @@ dan nama maker/brand, kamu HARUS mencari via internet:
 Kalau setelah pencarian kamu TIDAK menemukan varian yang cocok sama sekali,
 kembalikan array kosong - JANGAN mengarang data.
 
-WAJIB balas HANYA dalam format JSON array, tanpa teks lain, tanpa markdown fence:
+WAJIB balas HANYA dalam format JSON array, tanpa teks lain, tanpa markdown fence,
+tanpa penjelasan proses pencarian:
 [
   {
     "variant_model": "kode model spesifik varian ini",
@@ -43,17 +42,26 @@ WAJIB balas HANYA dalam format JSON array, tanpa teks lain, tanpa markdown fence
 
 
 def _extract_json(text: str):
-    """Gemini kadang bungkus JSON dengan ```json ... ``` walau sudah diminta polos. Bersihkan dulu."""
+    """Model kadang bungkus JSON dengan ```json ... ``` atau nambah teks lain walau sudah
+    diminta polos, atau JSON-nya kepotong di tengah teks penjelasan. Bersihkan & ambil array-nya."""
     text = text.strip()
     text = re.sub(r"^```json\s*|\s*```$", "", text, flags=re.IGNORECASE)
     text = re.sub(r"^```\s*|\s*```$", "", text)
     try:
         return json.loads(text)
     except json.JSONDecodeError:
-        return []
+        pass
+    # fallback: cari blok [...] pertama di dalam teks, siapa tahu ada teks lain nyempil
+    match = re.search(r"\[.*\]", text, flags=re.DOTALL)
+    if match:
+        try:
+            return json.loads(match.group(0))
+        except json.JSONDecodeError:
+            return []
+    return []
 
 
-def search_part(client: genai.Client, code: str, product: str, spec: str, maker: str,
+def search_part(client: Groq, code: str, product: str, spec: str, maker: str,
                  retry_feedback: str = "") -> list:
     """
     Cari spec + varian untuk 1 item PO.
@@ -68,17 +76,17 @@ Maker/Brand: {maker}
     if retry_feedback:
         user_prompt += f"\nCATATAN: pencarian sebelumnya ditolak verifier karena: {retry_feedback}\nCoba strategi pencarian lain / sumber lain."
 
-    response = client.models.generate_content(
+    completion = client.chat.completions.create(
         model=MODEL,
-        contents=user_prompt,
-        config=types.GenerateContentConfig(
-            system_instruction=SYSTEM_PROMPT,
-            tools=[types.Tool(google_search=types.GoogleSearch())],
-            temperature=0.2,
-        ),
+        messages=[
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": user_prompt},
+        ],
+        temperature=0.2,
+        compound_custom={"tools": {"enabled_tools": ["web_search"]}},
     )
 
-    text = response.text or ""
+    text = completion.choices[0].message.content or ""
     candidates = _extract_json(text)
     if not isinstance(candidates, list):
         return []
