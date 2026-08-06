@@ -44,10 +44,35 @@ def _extract_json(text: str):
         return {"verified": [], "rejected_feedback": "gagal parse response verifier"}
 
 
+MAX_CANDIDATES = 15        # batas jumlah kandidat yang dikirim ke verifier per panggilan
+MAX_FIELD_CHARS = 400      # batas panjang tiap field teks kandidat (full_spec kadang kebawa
+                            # konten scraping web yang panjang dari Agent 2 -> bisa bikin request
+                            # ke Groq kena 413 Request Entity Too Large)
+
+
+def _sanitize_candidates(candidates: list) -> list:
+    """Potong field yang kepanjangan & batasi jumlah kandidat, biar payload ke Groq
+    tidak membengkak (root cause error 413 request_too_large)."""
+    trimmed = []
+    for c in candidates[:MAX_CANDIDATES]:
+        if not isinstance(c, dict):
+            continue
+        clean = {}
+        for key, val in c.items():
+            if isinstance(val, str) and len(val) > MAX_FIELD_CHARS:
+                clean[key] = val[:MAX_FIELD_CHARS] + " ...[dipotong]"
+            else:
+                clean[key] = val
+        trimmed.append(clean)
+    return trimmed
+
+
 def verify_candidates(client: Groq, code: str, product: str, spec: str, maker: str,
                        candidates: list) -> dict:
     if not candidates:
         return {"verified": [], "rejected_feedback": "tidak ada kandidat ditemukan, coba kata kunci lain"}
+
+    candidates = _sanitize_candidates(candidates)
 
     user_prompt = f"""DATA ASLI:
 Kode internal: {code}
