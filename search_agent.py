@@ -8,6 +8,8 @@ import json
 import re
 from groq import Groq
 
+from groq_retry import call_with_retry
+
 MODEL = "groq/compound"  # system Groq dgn web search bawaan. Cek console.groq.com/docs/compound
                           # kalau ini error/deprecated di kemudian hari.
 
@@ -76,14 +78,17 @@ Maker/Brand: {maker}
     if retry_feedback:
         user_prompt += f"\nCATATAN: pencarian sebelumnya ditolak verifier karena: {retry_feedback}\nCoba strategi pencarian lain / sumber lain."
 
-    completion = client.chat.completions.create(
+    completion = call_with_retry(
+        client.chat.completions.create,
+        label=f"search_part[{code}]",
         model=MODEL,
         messages=[
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": user_prompt},
         ],
         temperature=0.2,
-        max_tokens=4096,  # batasi output Agent 2 - tanpa ini kadang balasan bisa sangat panjang
+        max_completion_tokens=4096,  # max_tokens sudah deprecated di Groq -> pakai ini.
+                          # Batasi output Agent 2 - tanpa ini kadang balasan bisa sangat panjang
                           # (ikut nyeret konten hasil web search), yang lalu diteruskan mentah-mentah
                           # ke Agent 1 (verify_agent) dan bikin request ke Groq kena 413
         compound_custom={"tools": {"enabled_tools": ["web_search"]}},

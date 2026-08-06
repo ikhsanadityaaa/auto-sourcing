@@ -8,6 +8,8 @@ import json
 import re
 from groq import Groq
 
+from groq_retry import call_with_retry
+
 MODEL = "llama-3.3-70b-versatile"  # cek console.groq.com/docs/models kalau model ini deprecated
 
 SYSTEM_PROMPT = """Kamu adalah quality-checker untuk data spare part industri.
@@ -84,7 +86,9 @@ KANDIDAT DARI PENCARIAN INTERNET:
 {json.dumps(candidates, ensure_ascii=False, indent=2)}
 """
 
-    completion = client.chat.completions.create(
+    completion = call_with_retry(
+        client.chat.completions.create,
+        label=f"verify_candidates[{code}]",
         model=MODEL,
         messages=[
             {"role": "system", "content": SYSTEM_PROMPT},

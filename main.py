@@ -25,8 +25,12 @@ from verify_agent import verify_candidates
 
 MAX_RETRY = 3           # batas maksimal Agent1<->Agent2 loop per item, biar tidak muter tanpa henti
 SLEEP_BETWEEN_ITEMS = 2  # jeda antar item (detik) - jaga-jaga rate limit free tier
-SLEEP_AFTER_SEARCH_CALL = 3  # detik - Groq free tier: 30 request/menit per model,
-                              # jeda min. 2s antar call; 3s buat margin aman
+SLEEP_AFTER_SEARCH_CALL = 8  # detik. groq/compound rate limit-nya ikut rate limit model
+                              # turunannya (mis. meta-llama/llama-4-scout, dipakai compound
+                              # buat orkestrasi tool call) yang TPM-nya cuma 30.000/menit dan
+                              # gampang kepakai habis kalau jeda cuma 2-3s. search_agent.py &
+                              # verify_agent.py sudah ada retry+backoff sendiri (groq_retry.py)
+                              # buat jaga-jaga kalau limitnya tetap kena.
 
 
 def process_one_item(groq_client, item: dict) -> list:
