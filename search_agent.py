@@ -9,9 +9,9 @@ import re
 from google import genai
 from google.genai import types
 
-MODEL = "gemini-flash-latest"       # alias resmi Google, otomatis nunjuk ke Flash model terbaru
-MODEL_FALLBACK = "gemini-3.1-flash-lite"  # cadangan kalau alias di atas kena deprecated/404
-                                           # (pernah terjadi waktu Google pindah generasi model)
+MODEL = "gemini-3.1-flash-lite"  # model tetap, hindari alias "latest" biar nggak boros 2x call/item
+                                  # kalau ini pun error 404 di kemudian hari, cek model terbaru di:
+                                  # https://ai.google.dev/gemini-api/docs/models
 
 SYSTEM_PROMPT = """Kamu adalah asisten riset spare part industri.
 Tugasmu: diberikan kode internal, nama produk, spec awal (sering tidak lengkap),
@@ -68,25 +68,15 @@ Maker/Brand: {maker}
     if retry_feedback:
         user_prompt += f"\nCATATAN: pencarian sebelumnya ditolak verifier karena: {retry_feedback}\nCoba strategi pencarian lain / sumber lain."
 
-    def _call(model_name: str):
-        return client.models.generate_content(
-            model=model_name,
-            contents=user_prompt,
-            config=types.GenerateContentConfig(
-                system_instruction=SYSTEM_PROMPT,
-                tools=[types.Tool(google_search=types.GoogleSearch())],
-                temperature=0.2,
-            ),
-        )
-
-    try:
-        response = _call(MODEL)
-    except Exception as e:
-        if "404" in str(e) or "NOT_FOUND" in str(e):
-            # Alias "latest" kadang di-deprecate Google tanpa banyak notice -> coba versi cadangan
-            response = _call(MODEL_FALLBACK)
-        else:
-            raise
+    response = client.models.generate_content(
+        model=MODEL,
+        contents=user_prompt,
+        config=types.GenerateContentConfig(
+            system_instruction=SYSTEM_PROMPT,
+            tools=[types.Tool(google_search=types.GoogleSearch())],
+            temperature=0.2,
+        ),
+    )
 
     text = response.text or ""
     candidates = _extract_json(text)
