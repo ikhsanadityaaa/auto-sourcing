@@ -83,6 +83,9 @@ Maker/Brand: {maker}
             {"role": "user", "content": user_prompt},
         ],
         temperature=0.2,
+        max_tokens=4096,  # batasi output Agent 2 - tanpa ini kadang balasan bisa sangat panjang
+                          # (ikut nyeret konten hasil web search), yang lalu diteruskan mentah-mentah
+                          # ke Agent 1 (verify_agent) dan bikin request ke Groq kena 413
         compound_custom={"tools": {"enabled_tools": ["web_search"]}},
     )
 
