@@ -2,14 +2,14 @@
 Orchestrator utama.
 
 Alur per item:
-  1. Agent 2 (Gemini+search) cari kandidat spec & varian model.
-  2. Agent 1 (Groq) verifikasi kandidat vs data asli.
+  1. Agent 2 (Groq groq/compound + web search) cari kandidat spec & varian model.
+  2. Agent 1 (Groq llama-3.3-70b) verifikasi kandidat vs data asli.
   3. Kalau verified kosong & belum mentok MAX_RETRY -> search lagi pakai feedback dari Agent 1.
   4. Kalau ada verified (atau sudah mentok retry) -> tulis ke sheet, 1 varian = 1 baris.
 
 Jalankan: python main.py
 Env vars yang dibutuhkan (lihat README.md):
-  GOOGLE_SERVICE_ACCOUNT_JSON, SPREADSHEET_ID, GEMINI_API_KEY, GROQ_API_KEY
+  GOOGLE_SERVICE_ACCOUNT_JSON, SPREADSHEET_ID, GROQ_API_KEY
 """
 
 import os
@@ -17,7 +17,6 @@ import sys
 import time
 from datetime import datetime, timezone
 
-from google import genai
 from groq import Groq
 
 from sheets_client import SheetsClient
@@ -26,11 +25,11 @@ from verify_agent import verify_candidates
 
 MAX_RETRY = 3           # batas maksimal Agent1<->Agent2 loop per item, biar tidak muter tanpa henti
 SLEEP_BETWEEN_ITEMS = 2  # jeda antar item (detik) - jaga-jaga rate limit free tier
-SLEEP_AFTER_GEMINI_CALL = 5  # detik - Gemini free tier gemini-2.5-flash dibatasi 5 request/menit,
-                               # jadi jeda min. 12s antar call; 13s buat margin aman
+SLEEP_AFTER_SEARCH_CALL = 3  # detik - Groq free tier: 30 request/menit per model,
+                              # jeda min. 2s antar call; 3s buat margin aman
 
 
-def process_one_item(gemini_client, groq_client, item: dict) -> list:
+def process_one_item(groq_client, item: dict) -> list:
     """Return list of output rows (list of list) untuk 1 item PO, siap di-append ke sheet."""
     code = item["code"]
     product = item["product"]
@@ -45,8 +44,8 @@ def process_one_item(gemini_client, groq_client, item: dict) -> list:
         attempt += 1
         print(f"  [{code}] percobaan {attempt}/{MAX_RETRY} ...")
 
-        candidates = search_part(gemini_client, code, product, spec, maker, retry_feedback=feedback)
-        time.sleep(SLEEP_AFTER_GEMINI_CALL)  # jaga rate limit Gemini free tier (5 request/menit)
+        candidates = search_part(groq_client, code, product, spec, maker, retry_feedback=feedback)
+        time.sleep(SLEEP_AFTER_SEARCH_CALL)  # jaga rate limit Groq free tier
         result = verify_candidates(groq_client, code, product, spec, maker, candidates)
         verified = result.get("verified", [])
         feedback = result.get("rejected_feedback", "")
@@ -90,11 +89,9 @@ def process_one_item(gemini_client, groq_client, item: dict) -> list:
 def main():
     service_account_path = os.environ["GOOGLE_SERVICE_ACCOUNT_JSON"]
     spreadsheet_id = os.environ["SPREADSHEET_ID"]
-    gemini_api_key = os.environ["GEMINI_API_KEY"]
     groq_api_key = os.environ["GROQ_API_KEY"]
 
     sheets = SheetsClient(service_account_path, spreadsheet_id)
-    gemini_client = genai.Client(api_key=gemini_api_key)
     groq_client = Groq(api_key=groq_api_key)
 
     source_rows = sheets.get_source_rows()
@@ -115,7 +112,7 @@ def main():
     for i, item in enumerate(todo, start=1):
         print(f"\n[{i}/{len(todo)}] Proses: {item['code']} - {item['product']}")
         try:
-            rows = process_one_item(gemini_client, groq_client, item)
+            rows = process_one_item(groq_client, item)
         except Exception as e:
             print(f"  !! ERROR saat proses {item['code']}: {e}")
             now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
