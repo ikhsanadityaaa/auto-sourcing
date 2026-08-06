@@ -66,10 +66,21 @@ class SheetsClient:
         return ws
 
     def get_already_processed_codes(self):
-        """Set EMS Code yang sudah pernah ditulis ke AI_Result, biar tidak diproses ulang."""
+        """Set EMS Code yang sudah pernah ditulis ke AI_Result DENGAN status final
+        (berhasil / not found), biar tidak diproses ulang. Baris berstatus "Error"
+        TIDAK dihitung sebagai selesai, supaya otomatis di-retry di run berikutnya
+        (misal item yang sebelumnya gagal karena rate limit)."""
         ws = self.get_output_ws()
-        col_a = ws.col_values(1)[1:]  # skip header
-        return set(c.strip() for c in col_a if c.strip())
+        all_values = ws.get_all_values()[1:]  # skip header
+        done = set()
+        for row in all_values:
+            if not row:
+                continue
+            code = row[0].strip() if len(row) > 0 else ""
+            status = row[8].strip() if len(row) > 8 else ""
+            if code and not status.startswith("Error"):
+                done.add(code)
+        return done
 
     def append_result_rows(self, rows: list):
         """
